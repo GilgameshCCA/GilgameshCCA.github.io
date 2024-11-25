@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="钢琴与和弦">
+    <title>钢琴与和弦</title>
+    <style>
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        .piano {
+            display: flex;
+            justify-content: center;
+            margin: 50px auto;
+            padding: 20px;
+            white-space: nowrap;
+        }
+        .key {
+            position: relative;
+            cursor: pointer;
+        }
+        .white {
+            width: 40px;
+            height: 160px;
+            background: white;
+            border: 1px solid #000;
+            z-index: 1;
+        }
+        .black {
+            width: 24px;
+            height: 90px;
+            background: black;
+            margin-left: -12px;
+            margin-right: -12px;
+            z-index: 2;
+            color: white;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px;
+            user-select: none;
+        }
+        .playing {
+            background: #ccc;
+        }
+        .transpose-btn {
+            font-size: 20px;
+            width: 40px;
+            height: 40px;
+            margin: 0 10px;
+            cursor: pointer;
+        }
+        .transpose-value {
+            display: inline-block;
+            min-width: 50px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .chord-section {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+        .chord-slot {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chord-button {
+            width: 100%;
+            padding: 10px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        .chord-button:hover {
+            background: #45a049;
+        }
+        .chord-select {
+            width: 100%;
+            padding: 5px;
+            margin: 2px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .chord-name {
+            font-weight: bold;
+            margin-top: 5px;
+            color: #333;
+        }
+
+        @media (max-width: 768px) {
+            .piano {
+                transform: scale(0.8);
+                margin: 20px auto;
+            }
+            
+            .chord-section {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .white {
+                width: 32px;
+                height: 120px;
+            }
+            
+            .black {
+                width: 20px;
+                height: 70px;
+                margin-left: -10px;
+                margin-right: -10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <button class="transpose-btn" onclick="transpose(-1)">-</button>
+            <span class="transpose-value">0</span>
+            <button class="transpose-btn" onclick="transpose(1)">+</button>
+        </div>
+        <div id="piano" class="piano"></div>
+        <div id="chord-section" class="chord-section"></div>
+    </div>
+
+    <script>
+        let audioContext;
+        let transposeValue = 0;
+
+        // 初始化音频上下文
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+
+        // MIDI音符转频率
+        function midiToFrequency(midi) {
+            return 440 * Math.pow(2, (midi - 69) / 12);
+        }
+
+        // 转调功能
+        function transpose(value) {
+            transposeValue += value;
+            document.querySelector('.transpose-value').textContent = transposeValue;
+        }
+
+        // 创建钢琴键盘
+        function createPiano() {
+            const piano = document.getElementById('piano');
+            const notes = 'C,C#,D,D#,E,F,F#,G,G#,A,A#,B'.split(',');
+            const startOctave = 3;  // 从C3开始
+            const endOctave = 6;    // 到C6结束
+
+            for (let octave = startOctave; octave <= endOctave; octave++) {
+                notes.forEach((note, index) => {
+                    // 如果是最后一个八度，只添加C键
+                    if (octave === endOctave && index > 0) return;
+                    
+                    const key = document.createElement('div');
+                    key.className = `key ${note.includes('#') ? 'black' : 'white'}`;
+                    // 调整MIDI音符计算方式，C3 = MIDI 48
+                    const midiNote = (octave * 12 + index) + 24;
+                    
+                    key.onclick = () => {
+                        if (!audioContext) initAudio();
+                        playNote(midiToFrequency(midiNote + transposeValue));
+                        key.classList.add('playing');
+                        setTimeout(() => key.classList.remove('playing'), 200);
+                    };
+
+                    piano.appendChild(key);
+                });
+            }
+        }
+
+        // 扩展和弦定义
+        const chordTypes = {
+            'maj': [0, 4, 7],
+            'min': [0, 3, 7],
+            'dim': [0, 3, 6],
+            'aug': [0, 4, 8],
+            'sus2': [0, 2, 7],
+            'sus4': [0, 5, 7],
+            'maj6': [0, 4, 7, 9],
+            'min6': [0, 3, 7, 9],
+            'maj7': [0, 4, 7, 11],
+            'min7': [0, 3, 7, 10],
+            'dom7': [0, 4, 7, 10],
+            'dim7': [0, 3, 6, 9],
+            'm7b5': [0, 3, 6, 10],
+            'maj9': [0, 4, 7, 11, 14],
+            'min9': [0, 3, 7, 10, 14],
+            'dom9': [0, 4, 7, 10, 14],
+            'add9': [0, 4, 7, 14],
+            'madd9': [0, 3, 7, 14]
+        };
+
+        function createChordSection() {
+            const section = document.getElementById('chord-section');
+            for (let i = 0; i < 16; i++) {
+                const slot = document.createElement('div');
+                slot.className = 'chord-slot';
+
+                // 根音选择
+                const rootSelect = document.createElement('select');
+                rootSelect.className = 'chord-select';
+                'C,C#,D,D#,E,F,F#,G,G#,A,A#,B'.split(',').forEach((note, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = note;
+                    rootSelect.appendChild(option);
+                });
+
+                // 和弦类型选择
+                const typeSelect = document.createElement('select');
+                typeSelect.className = 'chord-select';
+                Object.entries({
+                    'maj': '大三和弦',
+                    'min': '小三和弦',
+                    'dim': '减三和弦',
+                    'aug': '增三和弦',
+                    'sus2': 'sus2和弦',
+                    'sus4': 'sus4和弦',
+                    'maj6': '大六和弦',
+                    'min6': '小六和弦',
+                    'maj7': '大七和弦',
+                    'min7': '小七和弦',
+                    'dom7': '属七和弦',
+                    'dim7': '减七和弦',
+                    'm7b5': '半减七和弦',
+                    'maj9': '大九和弦',
+                    'min9': '小九和弦',
+                    'dom9': '属九和弦',
+                    'add9': '加九和弦',
+                    'madd9': '小加九和弦'
+                }).forEach(([value, text]) => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.textContent = text;
+                    typeSelect.appendChild(option);
+                });
+
+                // 低音选择
+                const bassSelect = document.createElement('select');
+                bassSelect.className = 'chord-select';
+                const bassOption = document.createElement('option');
+                bassOption.value = '';
+                bassOption.textContent = '默认低音';
+                bassSelect.appendChild(bassOption);
+                'C,C#,D,D#,E,F,F#,G,G#,A,A#,B'.split(',').forEach((note, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = note;
+                    bassSelect.appendChild(option);
+                });
+
+                // 和弦名称显示
+                const chordName = document.createElement('div');
+                chordName.className = 'chord-name';
+                chordName.textContent = 'C';
+
+                // 播放按钮
+                const button = document.createElement('button');
+                button.className = 'chord-button';
+                button.textContent = '播放和弦';
+
+                // 更新和弦名称显示
+                function updateChordName() {
+                    const root = 'C,C#,D,D#,E,F,F#,G,G#,A,A#,B'.split(',')[rootSelect.value];
+                    const type = typeSelect.value;
+                    const bass = bassSelect.value !== '' ? 
+                        '/' + 'C,C#,D,D#,E,F,F#,G,G#,A,A#,B'.split(',')[bassSelect.value] : '';
+                    
+                    let displayType = type
+                        .replace('maj', '')
+                        .replace('min', 'm')
+                        .replace('dim', '°')
+                        .replace('aug', '+');
+                    
+                    chordName.textContent = root + displayType + bass;
+                }
+
+                [rootSelect, typeSelect, bassSelect].forEach(select => {
+                    select.addEventListener('change', updateChordName);
+                });
+
+                // 播放和弦
+                button.onclick = () => {
+                    if (!audioContext) initAudio();
+                    const root = parseInt(rootSelect.value) + 60;
+                    const type = typeSelect.value;
+                    const bass = bassSelect.value !== '' ? 
+                        parseInt(bassSelect.value) + 48 : null;
+                    
+                    playChordWithBass(root, type, bass);
+                };
+
+                slot.appendChild(chordName);
+                slot.appendChild(rootSelect);
+                slot.appendChild(typeSelect);
+                slot.appendChild(bassSelect);
+                slot.appendChild(button);
+                section.appendChild(slot);
+
+                // 初始化和弦名称
+                updateChordName();
+            }
+        }
+
+        function playChordWithBass(root, type, bass) {
+            const notes = chordTypes[type].map(interval => root + interval + transposeValue);
+            
+            // 如果有指定低音，先播放低音
+            if (bass !== null) {
+                playNote(midiToFrequency(bass + transposeValue), 0.4);
+            }
+            
+            // 稍微延迟后播放和弦其他音
+            setTimeout(() => {
+                notes.forEach((note, index) => {
+                    playNote(midiToFrequency(note), 0.3);
+                });
+            }, 30);
+        }
+
+        function playNote(frequency, volume = 0.3) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.value = frequency;
+            
+            gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1.5);
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.start();
+            setTimeout(() => oscillator.stop(), 1500);
+        }
+
+        // 初始化
+        window.onload = function() {
+            createPiano();
+            createChordSection();
+        };
+    </script>
+</body>
+</html>
